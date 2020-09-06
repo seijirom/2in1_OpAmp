@@ -1,0 +1,5 @@
+---
+target: 2in1
+reference: 2in1_reference.cir
+netlist: "/home/anagix/work/2020SepTO/OpAmp/2in1_tb1.net"
+schematic: "/home/anagix/work/2020SepTO/OpAmp/2in1_tb1.asc"

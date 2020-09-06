@@ -1,0 +1,63 @@
+* Z:\home\anagix\work\2020SepTO\OpAmp\2in1_tb1.asc
+XX1 NC_01 N003 N004 N003 N006 N001 OUT1 OUT2 2in1
+V1 N006 0 2.5
+V2 N005 0 SINE(2.5 0.1 1k)
+R1 N001 N005 10k
+R2 N002 N001 100k
+R3 OUT1 N001 100k
+V3 N004 0 5
+V4 N003 0 5
+
+* block symbol definitions
+.subckt 2in1 Vbias1 Vbias2 Vdd1 Vdd2 Vin+ Vin_ Vout1 Vout2
+XX1 Vin_ Vin+ Vout1 Vdd1 Vbias1 0 opamp3ureiauto
+XX2 Vin+ Vin_ Vbias2 Vdd2 Vout2 0 opamp_k_niioka_20200903
+.ends 2in1
+
+.subckt opamp3ureiauto Vinm Vinp Vout VDD Vbias gnd
+M1 N010 N010 gnd gnd nch l=1u w=16u ad=3.5e_10 as=3.5e_10 pd=64e_6 ps=64e_6
+M2 N008 N008 N010 gnd nch l=1u w=16u ad=3.5e_10 as=3.5e_10 pd=64e_6 ps=64e_6
+M3 N011 N010 gnd gnd nch l=1u w=16u ad=3.5e_10 as=3.5e_10 pd=64e_6 ps=64e_6
+M4 N007 N008 N011 gnd nch l=1u w=16u ad=3.5e_10 as=3.5e_10 pd=64e_6 ps=64e_6
+M5 N001 Vbias gnd gnd nch l=1u w=34u ad=7e_10 as=7e_10 pd=114e_6 ps=114e_6
+M6 N006 Vbias gnd gnd nch l=1u w=16u ad=3.5e_10 as=3.5e_10 pd=64e_6 ps=64e_6
+M10 Vout N009 gnd gnd nch l=1u w=100u ad=2.1e_9 as=2.1e_9 pd=314e_6 ps=314e_6
+M11 N009 N010 gnd gnd nch l=1u w=16u ad=3.5e_10 as=3.5e_10 pd=64e_6 ps=64e_6
+M12 VDD N007 N009 gnd nch l=1u w=16u ad=3.5e_10 as=3.5e_10 pd=64e_6 ps=64e_6
+M13 N002 N001 VDD VDD pch l=1u w=50u ad=1.05e_9 as=1.05e_9 pd=164e_6 ps=164e_6
+M14 N003 N003 N002 N002 pch l=1u w=38u ad=5.25e_10 as=5.25e_10 pd=89e_6 ps=89e_6
+M15 N006 N006 N003 N003 pch l=1u w=38u ad=5.25e_10 as=5.25e_10 pd=89e_6 ps=89e_6
+M16 N007 N006 N005 N005 pch l=1u w=19u ad=5.25e_10 as=5.25e_10 pd=89e_6 ps=89e_6
+M17 N008 N006 N004 N004 pch l=1u w=19u ad=5.25e_10 as=5.25e_10 pd=89e_6 ps=89e_6
+M18 N004 Vinm N002 N002 pch l=1u w=25u ad=5.25e_10 as=5.25e_10 pd=89e_6 ps=89e_6
+M20 Vout N001 VDD VDD pch l=1u w=50u ad=1.05e_9 as=1.05e_9 pd=164e_6 ps=164e_6
+M21 N005 Vinp N002 N002 pch l=1u w=25u ad=5.25e_10 as=5.25e_10 pd=89e_6 ps=89e_6
+M24 N001 N001 VDD VDD pch l=1u w=50u ad=1.05e_9 as=1.05e_9 pd=164e_6 ps=164e_6
+M7 Vbias Vbias gnd gnd nch l=1u w=34u ad=7e_10 as=7e_10 pd=114e_6 ps=114e_6
+R1 VDD Vbias 40k
+C1 Vout N007 3p
+*.inc ./models/OR1_mos
+*.include "./BSIM3V3N.mod"
+*.include "./BSIM3V3P.mod"
+.ends opamp3ureiauto
+
+.subckt opamp_k_niioka_20200903 in+ in_ Vb Vdd out GND
+M1 N002 N001 Vdd Vdd pch l=3u w=100u
+M2 N001 N001 Vdd Vdd pch l=3u w=100u
+M4 N001 in_ N004 GND nch l=1u w=400u
+M5 N002 in+ N004 GND nch l=1u w=400u
+M6 N004 N003 GND GND nch l=2.5u w=120u
+M7 N003 N003 GND GND nch l=2.5u w=10u
+M8 out N003 GND GND nch l=1u w=120u
+M3 out N002 Vdd Vdd pch l=1u w=240u
+C1 N002 out 3p
+R1 N003 Vb 40k
+*.include "./models/OR1_mos"
+.ends opamp_k_niioka_20200903
+
+.model NMOS NMOS
+.model PMOS PMOS
+.lib C:\users\anagix\My Documents\LTspiceXVII\lib\cmp\standard.mos
+.tran 10m
+.backanno
+.end
