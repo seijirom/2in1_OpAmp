@@ -55,8 +55,8 @@ C2 N002 N001 3p
 .model NMOS NMOS
 .model PMOS PMOS
 .lib C:\Users\seijirom\Documents\LTspiceXVII\lib\cmp\standard.mos
-.param Rs=10 Rf=1k vdd=5
+.param Rs=100 Rf=100k vdd=5
 .dc V1 0 5 0.01
-.step dec param Rf 1k 100k 1
+* .step dec param Rf 1k 100k 1
 .backanno
 .end
