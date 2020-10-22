@@ -1,19 +1,18 @@
-* Z:\home\anagix\work\2020SepTO\OpAmp\2in1_tb1.asc
-XX1 NC_01 N003 N004 N003 N006 N001 OUT1 OUT2 2in1
-V1 N006 0 2.5
-V2 N005 0 SINE(2.5 0.1 1k)
-R1 N001 N005 10k
-R2 OUT2 N001 100k
-R3 N002 N001 100k
-V3 N004 0 5
-V4 N003 0 5
+* C:\Users\seijirom\Dropbox\MakeLSI\2020_9\2in1_OpAmp\PSRR_tb.asc
+XX1 N001 N004 Vout1 Vbias2 Vbias1 0 opamp3ureiauto
+XX2 N003 N002 Vbias2 Vbias2 Vout2 0 opamp_k_niioka_20200903
+V1 Vbias2 0 {vdd}
+R1 N001 vin {Rs}
+R2 N004 vin {Rs}
+R3 N004 vin {Rf}
+R4 Vout1 N001 {Rf}
+V3 vin 0 {vdd/2}
+R5 N002 vin {Rs}
+R6 N003 vin {Rs}
+R7 N003 vin {Rf}
+R8 Vout2 N002 {Rf}
 
 * block symbol definitions
-.subckt 2in1 Vbias1 Vbias2 Vdd1 Vdd2 Vin+ Vin- Vout1 Vout2
-XX1 Vin- Vin+ Vout1 Vdd1 Vbias1 0 opamp3ureiauto
-XX2 Vin+ Vin- Vbias2 Vdd2 Vout2 0 opamp_k_niioka_20200903
-.ends 2in1
-
 .subckt opamp3ureiauto Vinm Vinp Vout VDD Vbias gnd
 M1 N010 N010 gnd gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
 M2 N008 N008 N010 gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
@@ -48,14 +47,16 @@ M6 N004 N003 GND GND nch l=2.5u w=120u
 M7 N003 N003 GND GND nch l=2.5u w=10u
 M8 out N003 GND GND nch l=1u w=120u
 M3 out N002 Vdd Vdd pch l=1u w=240u
-C1 N002 out 3p
 R1 N003 Vb 40k
+C2 N002 N001 3p
 .include "./models/OR1_mos"
 .ends opamp_k_niioka_20200903
 
 .model NMOS NMOS
 .model PMOS PMOS
-.lib C:\users\anagix\My Documents\LTspiceXVII\lib\cmp\standard.mos
-.tran 10m
+.lib C:\Users\seijirom\Documents\LTspiceXVII\lib\cmp\standard.mos
+.param Rs=10 Rf=1k vdd=5
+.dc V1 0 5 0.01
+.step dec param Rf 1k 100k 1
 .backanno
 .end
