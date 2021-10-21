@@ -1,0 +1,642 @@
+# Copyright(C) 2009-2020 Anagix Corporation
+class Postprocess
+  def scan control, parsers, nodes=nil
+    plots = []
+    postprocess = ''
+    sweep = {}
+    
+    return [plots, postprocess] if control.nil? || control.strip == ''
+    control.gsub(/\\\r*\n/,'').each_line{|l|
+      if l =~ /^save +(.*)/
+        nodes ||= $1.split
+      end
+    }
+    control.gsub(/\\\r*\n/,'').each_line{|l|
+#      l.chomp!.downcase!
+      l.chomp!
+      parsers.each{|p|
+        p.parse l
+        p.nodes = nodes if nodes
+      }
+    }
+    parsers.each{|p|
+      next unless p.exist
+      pp = p.postprocess
+      pp =~ /^ *(\w+): /
+      base_pp = $1
+      sweep[base_pp] = p.sweep
+      postprocess << pp
+      pl = p.plot
+      plots << pl if pl
+    }
+    postprocess << "'...'" if nodes == [] 
+    return plots, postprocess, sweep
+  end
+
+  def batch_script
+#    script = File.open(File.join(RAILS_ROOT, 'lib', File.basename(__FILE__))).read + "\n"
+    script = copy_file_to_load(File.basename(__FILE__))
+  end
+end
+
+class Array
+  def average
+    sum = 0
+    self.each{|a|
+      sum += a
+    }
+    sum / self.size
+  end
+end
+
+class Array_with_interpolation < Array
+  def db
+    self.map{|a| 20*Math::log10(a.abs)}
+  end
+
+  def phs
+    self.map{|a| shift360(a.phase*(180.0/Math::PI))}
+  end
+  
+  def shift360 p
+    if p > 30
+      p = p -360
+    end
+    p
+  end
+  private :shift360
+
+#  def map &block
+#    Array_with_interpolation.new(super(&block))
+#  end
+
+  def where y, v, ignore=nil, return_value=nil, &block
+    where2 y, v, {ignore: ignore, return_value: return_value, rising: true, falling: true}, &block
+  end
+  
+  def rising y, v, ignore=nil, return_value=nil, &block
+    where2 y, v, {ignore: ignore, return_value: return_value, rising: true, falling: false}, &block
+  end
+  
+  def falling y, v, ignore=nil, return_value=nil, &block
+    where2 y, v, {ignore: ignore, return_value: return_value, rising: false, falling: true}, &block
+  end
+
+  def where2 y, v, options, &block
+    # find nearest index i where y[i] =~ v
+    for i in 0..y.size-2
+      if block_given?
+        next unless yield self[i], y[i], self[i+1], y[i+1] 
+      end
+      if (y[i]-v)*(y[i+1]-v) <= 0
+        if (options[:rising] && y[i+1]-y[i] > 0) or (options[:falling] && y[i+1]-y[i] < 0)
+          return self[i] + ((self[i+1]-self[i])/(y[i+1]-y[i]))*(v-y[i])
+        end
+      end
+    end
+    raise "error in postprocess: there is no point in x where 'y=#{v}'" unless options[:ignore]
+    return options[:return_value]
+  end
+
+  def part a
+    # return part of self as y, range specified by {|x| condition}
+    raise "array size mismatch" if self.size != a.size
+    raise "needs condition like b.slice(a){|x| x< 2}" unless block_given?
+    y = Array_with_interpolation.new    
+    a.each_index{|i|
+      y << self[i] if yield a[i]
+    }
+    y
+  end
+
+  def plus a
+    raise "array size mismatch" if self.size != a.size
+    b = self.dup
+    a.each_index{|i|
+      b[i] = b[i] + a[i]
+    }
+    b
+  end
+
+  def minus a
+    raise "array size mismatch" if self.size != a.size
+    b = self.dup
+    a.each_index{|i|
+      b[i] = b[i] - a[i]
+    }
+    b
+  end 
+end
+
+module Rowcol_vector
+  def row_vec i
+    row = @data[i]
+  end
+  def col_vec name
+    if name.class == String
+      j = @nodes.index name
+    else
+      j = name
+    end
+    col = Array_with_interpolation.new
+    for i in 0..@data.size-1
+      col << @data[i][j]
+    end
+    return col
+  end
+
+  def add_row row_vec
+    @data << row_vec
+  end
+
+  def merge wave, *new_nodes
+    begin
+      new_data = [] 
+      @data.each_index{|i|
+        raise 'Merge error' if @data[i][0] != wave.data[i][0]
+#debugger if i==1
+        new_data << @data[i] + wave.data[i][1..-1]
+      }
+      new_nodes = wave.nodes[1..-1] if new_nodes.size == 0
+      @nodes += new_nodes
+      @data = new_data
+    rescue
+      @data
+    end
+  end
+
+  def mult xm, ym=nil
+    @data.each_index{|i|
+      @data[i][0] =  @data[i][0]*xm if xm
+      if ym
+        for j in 1..@data[i].size-1
+          @data[i][j] =  @data[i][j]*ym
+        end
+      end
+    }
+  rescue
+    raise "Error: results for #{@nodes.join(', ')} are not available --- are they valid? "
+  end
+
+  def save file=@file, *nodes
+    nodes = @nodes if nodes.nil? || nodes == []
+    otf = File.new file, 'w'
+    otf.puts nodes.join(',')
+    for i in 0..@data.size-1
+      otf.puts @data[i].join(',')
+    end
+    otf.close
+  end
+    
+  def nodes *nodes
+    if nodes
+      @nodes = nodes
+    else
+      @nodes
+    end
+  end
+
+  def plot *nodes
+    selection = nodes.map{|n| @nodes.index(n).to_s}
+    [selection.join(','), nodes.join(',')]
+  end
+
+  def deriv *new_nodes    
+    new_data = [[@data[0][0]] + [0]*(@data[0].size-1)]
+    for i in 1..@data.size-1
+      new_row = [@data[i][0]]
+      for j in 1..@data[i].size-1
+        new_row << (@data[i][j]-@data[i-1][j])/(@data[i][0]-@data[i-1][0])
+      end
+      new_data << new_row
+    end
+    new_nodes = @nodes.dup if new_nodes == []
+    header = [new_nodes[0]]
+    new_nodes[1..-1].each{|n|
+      header << n + "'"
+    }
+    return Wave.new(header, new_data)
+  end
+
+  def integ from=nil, to=nil
+    result = [0.0]*(@data[0].size-1)
+    for i in 1..@data.size-1
+      next if from && @data[i][0] < from
+      next if to && @data[i][0] > to
+      width = @data[i][0]-@data[i-1][0]
+      for j in 1..@data[i].size-1
+        result[j-1] += 0.5*(@data[i][j]+@data[i-1][j])*width
+      end
+    end
+    result
+  end
+
+  def integ_noise from=nil, to=nil
+    result = [0.0]*(@data[0].size-1)
+    for i in 1..@data.size-1
+      next if from && @data[i][0] < from
+      next if to && @data[i][0] > to
+      width = @data[i][0]-@data[i-1][0]
+      for j in 1..@data[i].size-1
+        result[j-1] += 0.5*(@data[i][j]**2+@data[i-1][j]**2)*width
+      end
+    end
+    result.map{|a| Math.sqrt(a)}
+  end
+
+  #puts "***x[#{i}],y[#{i}]=#{x[i]},#{y[i]}"
+  #puts "---x[#{i}],y[#{i}]=#{x[i]},#{y[i]}"
+  #puts "new_x[#{j}],new_y[#{j-1}]=#{new_x[j]},#{new_y[j-1]}"
+
+  def pp vector, frequency, delay=0
+    x = self.col_vec 0
+    if vector.class == Fixnum
+      y = self.col_vec vector
+    end
+    oofreq = 1/frequency
+    new_x = delay.step(x[-1]-oofreq, oofreq).to_a
+    j = 1
+    ymin, ymax = [1e34, -1e34]
+    pp = [] 
+    min = []
+    max = []
+    for i in 0..x.size-1
+      next if x[i] < delay
+      if new_x[j] && x[i] < new_x[j] 
+        ymin = y[i] if y[i] < ymin
+        ymax = y[i] if y[i] > ymax
+      else  #  new_x[j] <= x[i]
+        while new_x[j+1] && new_x[j+1] < x[i]
+          pp << pp[-1]
+          min << min[-1]
+          max << max[-1]
+          j = j+1
+        end   
+        pp << ymax - ymin
+        min << ymin
+        max << ymax
+        j = j+1
+        ymin = ymax = y[i]
+#        break if j >= new_x.size-1
+      end
+    end
+    new_x.shift
+    new_data = []
+    for i in 0..new_x.size-1
+      new_data << [new_x[i], pp[i]]
+    end
+#debugger
+    return Wave.new(self.nodes, new_data)
+  end
+
+  def avg vector, frequency, delay=0
+    x = self.col_vec 0
+    if vector.class == Fixnum
+      y = self.col_vec vector
+    end
+    oofreq = 1/frequency
+    new_x = delay.step(x[-1]-oofreq, oofreq).to_a
+    j = 1
+    avg = []
+    for i in 0..x.size-1
+      next if x[i] < delay
+      if new_x[j] && x[i] < new_x[j] 
+#        sum = 
+        ymin = y[i] if y[i] < ymin
+        ymax = y[i] if y[i] > ymax
+      else  #  new_x[j] <= x[i]
+        while new_x[j+1] && new_x[j+1] < x[i]
+          avg << avg[-1]
+          j = j+1
+        end   
+        avg << sum*frequency
+        sum = 0
+        j = j+1
+      end
+    end
+    new_x.shift
+    new_data = []
+    for i in 0..new_x.size-1
+      new_data << [new_x[i], avg[i]]
+    end
+    return Wave.new(self.nodes, new_data)
+  end
+
+  private
+  def numeric?(object)
+    true if Float(object) rescue false
+  end
+
+end
+
+class Wave
+  attr_accessor :nodes, :data, :file
+  include Rowcol_vector
+  def initialize nodes, data=[], file=nil
+    @nodes = nodes
+    @data = data
+    @file = file
+  end
+end
+
+class CSVwave < Wave
+  def initialize file_name, *nodes
+    @nodes = nodes
+    @file = file_name
+    if File.file? file_name
+      inf = File.open(file_name)
+      @data = []
+      l = inf.gets
+      a = l.chop.split(',')
+      first_line_is_nodes = true
+      if @nodes != a
+        a.each{|b|
+          first_line_is_nodes = false if numeric? b
+        }
+      end
+      if first_line_is_nodes
+        @nodes = a.dup if @nodes.nil? || @nodes.size == 0
+      else
+        @data << a.map{|b| b.to_f}
+      end
+      
+      while l = inf.gets
+        @data << l.chop.split(',').map{|a| a.to_f}
+      end
+      inf.close
+    else
+      @data = []
+    end
+    a=Wave.new @nodes, @data
+  end
+
+end
+
+def to_float v
+  if i=v.index('g') || i=v.index('G')
+    return v[0..i-1].to_f * 1e9
+  elsif i=v.index('M') || i=v.index('MEG') || i=v.index('Meg') || i=v.index('meg')
+    return v[0..i-1].to_f * 1e6
+  elsif i=v.index('k') || i=v.index('K')
+    return v[0..i-1].to_f * 1e3
+  elsif i=v.index('m')
+    return v[0..i-1].to_f * 1e-3
+  elsif i=v.index('u') || i=v.index('U')
+    return v[0..i-1].to_f * 1e-6
+  elsif i=v.index('n') || i=v.index('n')
+    return v[0..i-1].to_f * 1e-9
+  elsif i=v.index('p') || i=v.index('P')
+    return v[0..i-1].to_f * 1e-12
+  elsif i=v.index('f') || i=v.index('F')
+    return v[0..i-1].to_f * 1e-15
+  else
+    return v.to_f
+  end
+end
+
+require 'complex'
+
+def dp2c db, phase
+  if db.class == Array || db.class == Array_with_interpolation
+    c = []
+    for i in 0..db.size-1
+      a = 10.0**(db[i]/20.0)
+      rad = Math::PI*phase[i]/180
+      c << Complex(a*Math.cos(rad), a*Math.sin(rad))
+    end
+    c
+  else
+    a = 10.0**(db/20.0)
+    rad = Math::PI*phase/180
+    return Complex(a*Math.cos(rad), a*Math.sin(rad))
+  end
+end
+
+def c2dp c
+  if c.class == Array
+    db = []
+    phase = []
+    for i in 0..c.size-1
+      db << 20*Math.log10(c[i].abs)
+      phase << c[i].arg*180/(Math::PI)
+    end
+    return [db, phase]
+  else
+    return 20*Math.log10(c.abs), c.arg*180/(Math::PI)
+  end
+end
+
+class Numeric
+  def dec stop, points
+    diff = Math.log(10.0)
+    incr = diff/points 
+    Math.log(self).step(Math.log(stop), incr){|v|
+      yield Math.exp(v)
+    }
+  end
+
+  def oct stop, points
+    diff = Math.log(2.0)
+    incr = diff/points 
+    Math.log(self).step(Math.log(stop), incr){|v|
+      yield Math.exp(v)
+    }
+  end
+end
+
+class Spice
+  def VT name, minus=false
+    if ['gnd', 'gnd!', 'gnda!', '0'].include? name
+      sweep = @wavedata.col_vec(0)
+      [sweep, [0]*sweep.size]
+    else
+      unless index = @wavedata.nodes.index(name)
+        raise "#{name} is not valid --- you can show DC solution to check correct name by clicking the DC button;"
+      end
+      if minus
+        [@wavedata.col_vec(0), @wavedata.col_vec(index).map{|a| -a}]
+      else
+        [@wavedata.col_vec(0), @wavedata.col_vec(index)]
+      end
+    end
+  end
+  def _VT name, minus=true
+    VT name, minus
+  end
+  alias :IT :VT
+  alias :VS :VT
+  alias :IS :VT
+  alias :_IT :_VT
+  alias :_VS :_VT
+  alias :_IS :_VT
+  def VF name
+    unless index = @wavedata.nodes.index("db(#{name})")
+      raise "#{name} is not valid --- you can show DC solution to check correct name by clicking the DC button;"
+    end
+    [@wavedata.col_vec(0), @wavedata.col_vec(index), @wavedata.col_vec(index+1)]
+  end
+  alias :IF :VF
+  def value wave, xval
+    x, y = wave
+    for i in 0..x.size-2
+      if (x[i]-xval)*(x[i+1]-xval) <= 0
+        return y[i] + ((y[i+1]-y[i])/(x[i+1]-x[i]))*(xval-x[i])
+      end
+   end
+  end
+  def xmax wave
+    x, y = wave
+    x.max
+  end
+  def xmin wave
+    x, y = wave
+    x.min
+  end
+  def ymax wave
+    x, y = wave
+    y.max
+  end
+  def ymin wave
+    x, y = wave
+    y.min
+  end
+  def cross wave, cross_val, n, cross_type, multiple=nil, xname='time'
+    desc='cross(wave, cross_val, n, cross_type, multiple, xname)'
+    raise "n should not be 0 in #{desc}" if n==0
+    raise "cross_type in #{desc} should be one of 'rising', 'falling', 'either'" unless ['rising', 'falling', 'either'].include? cross_type
+    raise "multiple in #{desc} should be either nil or true" unless multiple == nil || multiple == true
+    # raise "xname in #{desc} should be either 'time' or 'cycle" unless xname == 'time' || xname == 'cycle'
+#    return wave[0].where wave[1], cross_val
+    x, y = wave
+    count = 0
+    for i in 0..y.size-2
+      if (y[i]-cross_val)*(y[i+1]-cross_val) <= 0
+        case cross_type
+        when 'rising'
+          count = count + 1 if y[i] <= cross_val
+        when 'falling'
+          count = count + 1 if y[i] >= cross_val
+        when 'either'
+          count = count + 1
+        end
+        if count == n
+          return x[i] + ((x[i+1]-x[i])/(y[i+1]-y[i]))*(cross_val-y[i])
+        end
+      end
+    end
+    return nil
+  end
+  def delay *args # stop ignored
+    (cross(args[:wf1], args[:value1], args[:nth1], args[:edge1], args[:multiple]) -
+     (cross(args[:wf2], args[:value2], args[:nth2], args[:edge2], args[:multiple])))
+  end
+  def freq wave, cross_type, *args
+    x1 = cross(wave, args[:threshold], 1, cross_type)
+    x2 = cross(wave, args[:threshold], 2, cross_type)
+    1/(x2 - x1) if x1 and x2
+  end
+  def fallTime(wave )
+  end
+  alias :fall_time :fallTime
+  def riseTime(wave )
+  end
+  alias :rise_time :riseTime
+  def gainMargin
+  end
+  alias :gain_margin :gainMargin
+  def phaseMargin
+  end
+  alias :phase_margin :phaseMargin
+  def dB20 v
+    if v.class == Array
+      [v[0], v[1]] # v is already in dB
+    else
+      20*Math.log10(v)
+    end
+  end
+  alias :db20 :dB20
+  def operation result, d, func
+    if result.class == Array and d.class == Array
+      result[1].each_index{|i|
+        #          result[i] = result[i] / d[i]
+        result[1][i] = func.call(result[1][i], d[1][i])
+      }
+    elsif result.class == Array
+      result.each_index{|i|
+        #          result[i] = result[i] / d
+        result[1][i] = func.call(result[1][i], d)
+      }
+    elsif d.class == Array
+      r = result
+      result = []
+      result[0] = d[0]
+      result[1] = []
+      d.each_index{|i|
+        #          result[i] = r / d[i]
+        result[1][i] = func.call(r, d[1][i])
+      }
+    else
+      result = func.call(result, d)
+    end
+    result
+  end
+  
+  def quotient divident, *dividor
+    result = divident
+    dividor.each{|d|
+      result = operation result, d, lambda{|a, b| a/b} 
+    }
+    result
+  end
+  def times multiplicand, *multiplier
+    result = multiplicand
+    multiplier.each{|m|
+#      result = result * m
+      result = operation result, m, lambda{|a, b| a*b} 
+    }
+    result
+  end
+  def difference minuend, *subtrhend
+    result = minuend
+    subtrhend.each{|s|
+#      result = result - s
+      result = operation result, s, lambda{|a, b| a-b} 
+    }
+    result
+  end
+  def combine curve, *curves
+    c2 = curve.dup
+    curves.each{|c|
+      for i in 1..c.size-1
+        c2 << c[i]
+      end
+    }
+    c2.transpose
+  end
+end
+
+if $0 == __FILE__ 
+  vout_c = CSVwave.new 'vout_c.csv'
+  vout_d = CSVwave.new 'vout_d.csv'
+  freq = vout_c.col_vec 0
+  db_c =  vout_c.col_vec 1
+  db_d =  vout_d.col_vec 1
+  db_cmrr = []
+  for i in 0..db_c.size-1
+    db_cmrr[i] = db_d[i] - db_c[i]
+  end
+  #  data = CSV.new 'CMRR.csv', 'freq', 'CMRR(db)'
+  #  for i in 0..freq.size-1
+  #    data.add_row [freq[i], db_cmrr[i]]
+  #  end
+  #  data.save
+  
+  data = []
+  for i in 0..freq.size-1
+    data << [freq[i], db_cmrr[i]]
+  end
+  
+  new_data = Wave.new ['freq', 'db_cmrr'], data
+  new_data.save 'test.csv'
+  
+end

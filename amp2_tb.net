@@ -1,0 +1,43 @@
+* Z:\home\anagix\work\2in1_OpAmp\amp2_tb.tmp
+V3 N001 0 2.5
+XX1 Vin 0 OUT1 N001 NC_01 N003 opamp3ureiauto
+V1 N002 0 AC 1 0
+V2 0 N003 2.5
+R1 OUT1 Vin 100k
+R2 Vin N002 1k
+
+* block symbol definitions
+.subckt opamp3ureiauto Vinm Vinp Vout VDD Vbias gnd
+M1 N010 N010 gnd gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
+M2 N008 N008 N010 gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
+M3 N011 N010 gnd gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
+M4 N007 N008 N011 gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
+M5 N001 Vbias gnd gnd nch l=1u w=34u ad=7e-10 as=7e-10 pd=114e-6 ps=114e-6
+M6 N006 Vbias gnd gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
+M10 Vout N009 gnd gnd nch l=1u w=100u ad=2.1e-9 as=2.1e-9 pd=314e-6 ps=314e-6
+M11 N009 N010 gnd gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
+M12 VDD N007 N009 gnd nch l=1u w=16u ad=3.5e-10 as=3.5e-10 pd=64e-6 ps=64e-6
+M13 N002 N001 VDD VDD pch l=1u w=50u ad=1.05e-9 as=1.05e-9 pd=164e-6 ps=164e-6
+M14 N003 N003 N002 N002 pch l=1u w=38u ad=5.25e-10 as=5.25e-10 pd=89e-6 ps=89e-6
+M15 N006 N006 N003 N003 pch l=1u w=38u ad=5.25e-10 as=5.25e-10 pd=89e-6 ps=89e-6
+M16 N007 N006 N005 N005 pch l=1u w=19u ad=5.25e-10 as=5.25e-10 pd=89e-6 ps=89e-6
+M17 N008 N006 N004 N004 pch l=1u w=19u ad=5.25e-10 as=5.25e-10 pd=89e-6 ps=89e-6
+M18 N004 Vinm N002 N002 pch l=1u w=25u ad=5.25e-10 as=5.25e-10 pd=89e-6 ps=89e-6
+M20 Vout N001 VDD VDD pch l=1u w=50u ad=1.05e-9 as=1.05e-9 pd=164e-6 ps=164e-6
+M21 N005 Vinp N002 N002 pch l=1u w=25u ad=5.25e-10 as=5.25e-10 pd=89e-6 ps=89e-6
+M24 N001 N001 VDD VDD pch l=1u w=50u ad=1.05e-9 as=1.05e-9 pd=164e-6 ps=164e-6
+M7 Vbias Vbias gnd gnd nch l=1u w=34u ad=7e-10 as=7e-10 pd=114e-6 ps=114e-6
+R1 VDD Vbias 40k
+C1 Vout N007 1.0e-11
+.inc ./models/OR1_mos
+.ends opamp3ureiauto
+
+.model NMOS NMOS
+.model PMOS PMOS
+*.lib C:\users\anagix\My Documents\LTspiceXVII\lib\cmp\standard.mos
+.include models/OR1_mos
+;tran 0 40u 0
+*.ac oct 10 1 100Meg
+.backanno
+.ac dec 10 1 1G
+.end
